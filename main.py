@@ -1,5 +1,7 @@
 import argparse
+import re
 from collections import Counter
+from itertools import groupby
 
 from talkbank_parser import MorParser, MorToken
 
@@ -112,8 +114,8 @@ def allgrams(filenames, gramsize, speakers=None):
     for ngram in ngrams_from_files(filenames, gramsize, speakers):
         print(ngram)
 
-def topngrams_from_file(filename, gramsize, freq_cutoff=1, speakers=None):
-    counts = Counter(ngrams_from_files([filename], gramsize, speakers))
+def topngrams_from_files(filenames, gramsize, freq_cutoff=1, speakers=None):
+    counts = Counter(ngrams_from_files(filenames, gramsize, speakers))
     top_10 = counts.most_common(10)
     if len(top_10) == 0:
         raise Exception('No utterances found')
@@ -124,9 +126,9 @@ def topngrams_from_file(filename, gramsize, freq_cutoff=1, speakers=None):
     return sorted(top_10, key=lambda x: x[1], reverse=True)
 
 def topngrams(filenames, gramsize, speakers=None, freq_cutoff=1):
-    for filename in sorted(filenames):
-        for gram, count in topngrams_from_file(filename, gramsize, speakers=speakers, freq_cutoff=freq_cutoff):
-            print('{}, {}, {}'.format(filename, count, gram))
+    for group, fns in groupby(sorted(filenames), lambda x: re.sub(r'[a-z]\.xml$', '', x)):
+        for gram, count in topngrams_from_files(fns, gramsize, speakers=speakers, freq_cutoff=freq_cutoff):
+            print('{}, {}, {}'.format(group.split('/')[-1], count, gram))
         print()
 
 def speakerstats(filenames):
