@@ -16,6 +16,9 @@ ILLEGAL_NGRAMS = {
     'f g',
     'uh oh',
     'oh oh',
+    'oh dear',
+    'oh no',
+    'no no',
     'um um',
     'um a',
     'beep beep',
@@ -126,6 +129,7 @@ def topngrams_from_files(filenames, gramsize, freq_cutoff=1, speakers=None):
     return sorted(top_10, key=lambda x: x[1], reverse=True)
 
 def topngrams(filenames, gramsize, speakers=None, freq_cutoff=1):
+    """  """
     for group, fns in groupby(sorted(filenames), lambda x: re.sub(r'[a-z]\.xml$', '', x)):
         for gram, count in topngrams_from_files(fns, gramsize, speakers=speakers, freq_cutoff=freq_cutoff):
             print('{}, {}, {}'.format(group.split('/')[-1], count, gram))
@@ -150,6 +154,7 @@ def main():
                                            help='outputs all ngrams in input file')
     allgram_parser.add_argument('-n', type=int, default=2)
     allgram_parser.add_argument('-s', '--speakers', default=None)
+
     allgram_parser.add_argument('filenames', nargs='+')
     allgram_parser.set_defaults(command='allgrams')
 
@@ -183,4 +188,6 @@ def main():
         topngrams(args.filenames, args.n, speakers=speakers, freq_cutoff=args.freq_cutoff)
     elif args.command == 'allgrams':
         allgrams(args.filenames, args.n, speakers=speakers)
-main()
+
+if __name__ == '__main__':
+    main()

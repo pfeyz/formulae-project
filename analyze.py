@@ -1,9 +1,11 @@
 import re
+from dataset import get_dataset
 from glob import glob
 from itertools import chain, repeat
 
 from main import generate_chunks
 import pandas as pd
+import numpy as np
 
 from talkbank_parser import MorParser
 
@@ -19,16 +21,42 @@ def read_data(filenames, n):
     data = pd.DataFrame(read_files(filenames, n))
     data.columns = 'filename uid speaker ngram'.split()
 
-    data['group'] = data.filename.apply(lambda x: re.sub(r'^.*/|\d+[a-z]\.xml', '', x))
-    data['session'] = data.filename.apply(lambda x: re.search(r'(\d+)[a-z]', x).group(1))
+    data['corpus'] = data.filename.apply(lambda x: re.sub(r'^.*/|\d+[a-z]\.xml', '', x))
+    data['session'] = (data.filename
+                       .apply(lambda x: re.search(r'(\d+)[a-z]', x).group(1))
+                       .pipe(pd.to_numeric))
     return data
 
 
-filenames = sorted(glob("/home/paul/Downloads/Manchester/**/*.xml"))
-bigrams = read_data(filenames, 2)
-trigrams = read_data(filenames, 3)
+def topn_with_ties(series, n):
+    try:
+        cutoff = series.nlargest(n)[-1]
+    except IndexError:
+        return None
+    return series[series >= cutoff]
 
-def analyze(target, other, topn=10):
+def top_20_by_speaker_session_split(df, n):
+    label_len = len(n)+1 if type(n) is list else n
+    d = (df
+         .assign(period=pd.cut(df.session, n))
+         [df.speaker.isin(['MOT', 'CHI'])]
+         .groupby('corpus period speaker'.split())
+         .apply(lambda x: topn_with_ties(x.ngram.value_counts(), 20)))
+    d = d.reset_index()
+    return d.rename(columns={'level_3': 'ngram',
+                             'ngram': 'count'})
+
+
+
+def shared_vocab(unigrams):
+    counts = (u[u.speaker.isin(['MOT', 'CHI'])]
+              .groupby(['session', 'speaker', 'ngram'])
+              .count().gt(0)
+              .astype(int)
+              .sum(level=[0, 2]))
+    return counts[counts.eq(2)].dropna()
+
+def analyze(target, other, topn=10, metadata=None):
     tops = target.ngram.value_counts()
     try:
         cutoff = tops.head(topn)[-1]
@@ -48,38 +76,44 @@ def analyze(target, other, topn=10):
                        / len(target))
     percent_top_ten = round(percent_top_ten, 2)
     df['ratio'] = df['frequency'].div(df['partner frequency']).round(2)
-    return {'df': df,
-            'total_bigram_tokens': len(target),
-            'percent_top_ten': percent_top_ten}
+    df['total_bigram_tokens'] = len(target)
+    df['percent_top_ten'] = percent_top_ten
 
-def bidirectional_analysis(d1, d2, metadata=None):
-    child = analyze(d1, d2)
-    adult = analyze(d2, d1)
     if metadata:
         for key in metadata:
-            child[key] = adult[key] = metadata[key]
-    return {'child': child, 'adult': adult}
+            print(key, metadata[key])
+            df[key] = metadata[key]
+    return df
+
+def bidirectional_analysis(d1, d2, metadata=None):
+    child = analyze(d1, d2, metadata={'target': 'CHI'})
+    adult = analyze(d2, d1, metadata={'target': 'MOT'})
+    df = pd.concat([child, adult])
+    if metadata:
+        for key in metadata:
+            df[key] = metadata[key]
+    return df
 
 def aggregate_analysis(data):
     return bidirectional_analysis(data[data.speaker == 'CHI'], data[data.speaker == 'MOT'])
 
 def within_group_analysis(data):
-    return (bidirectional_analysis(data[((data.group == group) &
+    return (bidirectional_analysis(data[((data.corpus == corpus) &
                                          (data.session == session) &
                                          (data.speaker == 'CHI'))],
-                                   data[((data.group == group) &
+                                   data[((data.corpus == corpus) &
                                          (data.session == session) &
                                          (data.speaker == 'MOT'))],
-                                   {'group': group, 'session': session})
-            for group in data.group.unique()
+                                   {'corpus': corpus, 'session': session})
+            for corpus in data.corpus.unique()
             for session in data.session.unique())
 
-def across_group_analysis(data):
-    return (bidirectional_analysis(data[((data.session == session) &
-                                         (data.speaker == 'CHI'))],
-                                   data[((data.session == session) &
-                                         (data.speaker == 'MOT'))],
-                                   {'session': session})
+def across_corpus_analysis(data):
+    return pd.concat(bidirectional_analysis(data[((data.session == session) &
+                                                  (data.speaker == 'CHI'))],
+                                            data[((data.session == session) &
+                                                  (data.speaker == 'MOT'))],
+                                            {'session': session})
             for session in data.session.unique())
 
 def extend(seq, length, pad=''):
@@ -95,12 +129,10 @@ def analysis_dict_to_csv(data):
             for x, y in zip(extend(child_text, length),
                             extend(adult_text, length))])
 
+# aggregate_bigram_analysis = bidirectional_analysis(bigrams[bigrams.speaker == 'CHI'],
+#                                                    bigrams[bigrams.speaker == 'MOT'])
+# aggregate_bigram_analysis = bidirectional_analysis(trigrams[trigrams.speaker == 'CHI'],
+#                                                    trigrams[trigrams.speaker == 'MOT'])
 
-aggregate_bigram_analysis = analyze(bigrams[bigrams.speaker == 'CHI'],
-                                    bigrams[bigrams.speaker == 'MOT'],
-                                    topn=20)
-aggregate_trigram_analysis = analyze(trigrams[trigrams.speaker == 'CHI'],
-                                     trigrams[trigrams.speaker == 'MOT'],
-                                     topn=20)
-across_group_bigrams = across_group_analysis(bigrams)
-across_group_bigrams = across_group_analysis(trigrams)
+# across_corpus_bigrams = across_corpus_analysis(bigrams)
+# across_corpus_bigrams = across_corpus_analysis(trigrams)
