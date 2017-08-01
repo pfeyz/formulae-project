@@ -53,8 +53,8 @@ def parent_shared_ngrams(filenames, gram_size):
             for word in ngram.split():
                 if word not in child_vocab:
                     break
-                else:
-                    parent_vocab.add(ngram)
+            else:
+                parent_vocab.add(ngram)
     return parent_vocab
 
 def filtered_parent_freq_count(filenames, gram_size):
