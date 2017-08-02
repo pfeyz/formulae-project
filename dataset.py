@@ -1,17 +1,90 @@
+import re
+import sqlite3
+from os import path
+from glob import glob
+
+import numpy as np
 import pandas as pd
 
-def get_dataset(cached=True):
-    if cached:
-        unigrams = pd.read_pickle('unigrams.pkl')
-        bigrams = pd.read_pickle('bigrams.pkl')
-        trigrams = pd.read_pickle('trigrams.pkl')
-    else:
-        filenames = sorted(glob("/home/paul/Downloads/Manchester/**/*.xml"))
-        unigrams = read_data(filenames, 1)
-        bigrams = read_data(filenames, 2)
-        trigrams = read_data(filenames, 3)
+from main import generate_chunks
+from talkbank_parser import MorParser
 
-        unigrams.to_pickle(open('unigrams.pkl', 'wb'))
-        bigrams.to_pickle(open('bigrams.pkl', 'wb'))
-        trigrams.to_pickle(open('trigrams.pkl', 'wb'))
-    return unigrams, bigrams, trigrams
+def read_ngrams_from_files(filenames, gramsize=2):
+    """Returns all a generator of all ngrams in files.
+
+    args
+
+    - filenames :: a list of strings, paths to xml files.
+    - n :: the size of the ngrams to create
+
+    """
+    parser = MorParser()
+    for xmlfn in filenames:
+        print(xmlfn)
+        for uid, speaker, ngram in generate_chunks(parser.parse(xmlfn), gramsize):
+            yield xmlfn, uid, speaker, ngram
+
+def read_data(filenames, gramsize):
+    """Returns a DataFrame with a row for every ngram in the files.
+
+    args
+
+    - filenames :: a list of strings, paths to xml files.
+    - n :: the size of the ngrams to create
+
+    """
+    data = pd.DataFrame(read_ngrams_from_files(filenames, gramsize))
+    data.columns = 'filename uid speaker ngram'.split()
+
+    return data
+
+def get_dataset(filenames, cached=True):
+    """Read xml files specified in `filenames` and returns a dictionary with 3 data
+    frames, one for each ngram size of 1, 2 and 3. If data has been loaded
+    before, read from a sql DB instead of reparsing XML files.
+
+    NOTE: cacheing is keyed ONLY on directory name!
+
+    args
+
+    - filenames :: a list of strings, paths to xml files.
+    - n :: the size of the ngrams to create
+
+    Returns a dictionary with 'unigram', 'bigram' and 'trigram' keys, with
+    DataFrames as values.
+
+    """
+    conn = sqlite3.connect('cached.sqlite3')
+    filenames = sorted(glob(filenames) if isinstance(filenames, str) else filenames)
+    table_prefix = path.commonpath(filenames)
+    table_prefix = path.basename(table_prefix) or path.dirname(table_prefix)
+    data = {}
+    ngrams = {'unigram': 1, 'bigram': 2, 'trigram': 3}
+    if cached:
+        for key in ngrams:
+            data[key] = pd.read_sql(
+                'select * from "{prefix}-{ngram}"'.format(prefix=table_prefix,
+                                                          ngram=key),
+                conn)
+    else:
+        for name, size in ngrams.items():
+            print(name)
+            data[name] = read_data(filenames, size)
+            data[name].to_sql('{prefix}-{ngram}'.format(prefix=table_prefix, ngram=name),
+                              conn,
+                              if_exists='replace')
+    conn.close()
+    return data['unigram'], data['bigram'], data['trigram']
+
+def get_manchester(filenames, cached=True):
+    """Calls get_dataset and adds corpus, session and part columns to the resulting
+    DataFrames. """
+    frames = get_dataset(filenames, cached)
+    for data in frames:
+        data['corpus'] = data.filename.apply(lambda x: re.sub(r'^.*/|\d+[a-z]\.xml', '', x))
+        data['session'] = (data.filename
+                           .apply(lambda x: re.search(r'(\d+)[a-z]', x).group(1))
+                           .pipe(pd.to_numeric))
+        data['part'] = np.where(data.filename.str.endswith('a.xml'),
+                                'a', 'b')
+    return frames

@@ -1,32 +1,7 @@
-import re
-from dataset import get_dataset
-from glob import glob
 from itertools import chain, repeat
 
-from main import generate_chunks
 import pandas as pd
 import numpy as np
-
-from talkbank_parser import MorParser
-
-def read_files(filenames, n=2):
-    parser = MorParser()
-    for fn in filenames:
-        print(fn)
-        for uid, speaker, ngram in generate_chunks(parser.parse(fn), n):
-            yield fn, uid, speaker, ngram
-
-
-def read_data(filenames, n):
-    data = pd.DataFrame(read_files(filenames, n))
-    data.columns = 'filename uid speaker ngram'.split()
-
-    data['corpus'] = data.filename.apply(lambda x: re.sub(r'^.*/|\d+[a-z]\.xml', '', x))
-    data['session'] = (data.filename
-                       .apply(lambda x: re.search(r'(\d+)[a-z]', x).group(1))
-                       .pipe(pd.to_numeric))
-    return data
-
 
 def topn_with_ties(series, n):
     try:
@@ -46,7 +21,14 @@ def top_20_by_speaker_session_split(df, n):
     return d.rename(columns={'level_3': 'ngram',
                              'ngram': 'count'})
 
-
+def top_20_by_speaker_file_split(df):
+    d = (df
+         [df.speaker.isin(['MOT', 'CHI'])]
+         .groupby('filename speaker'.split())
+         .apply(lambda x: topn_with_ties(x.ngram.value_counts(), 20)))
+    d = d.reset_index()
+    return d.rename(columns={'level_2': 'ngram',
+                             'ngram': 'count'})[d['ngram'] > 1]
 
 def shared_vocab(unigrams):
     counts = (u[u.speaker.isin(['MOT', 'CHI'])]
