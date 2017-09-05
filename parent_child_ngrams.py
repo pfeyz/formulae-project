@@ -1,4 +1,17 @@
+"""Generates an excel file with the top 20 child and adult ngrams and their
+counts, analyzed grouped by periods. Yellow cells indicate ngrams that are
+shared by parent and adult.
+
+Outputs to an excel file named 'parent_child_ngrams.xls'
+
+"""
+
 import xlwt
+import numpy as np
+import pandas as pd
+
+from analyze import top_20_by_speaker_session_split
+from dataset import get_manchester
 
 BOLD = xlwt.easyxf('font: bold True;')
 HIGHLIGHT = xlwt.easyxf('pattern: pattern solid, fore_colour yellow;')
@@ -24,7 +37,6 @@ def child_adult_two_col(df):
             .drop(['uid', 'corpus 1', 'corpus 2', 'period 1', 'period 2'], axis='columns'))
     cols = data.columns.tolist()
     cols = cols[-2:] + cols[:-2]
-    print(cols)
     return data[cols]
 
 def get_shared_words(df, item):
@@ -64,10 +76,10 @@ workbook = xlwt.Workbook()
 # bins = [(i * 6)+1 for i in range(7)]
 bins = [1, 7, 13, 19, 25, 31, 36]
 
-unigrams, bigrams, trigrams = get_dataset()
+unigrams, bigrams, trigrams = get_manchester('/home/paul/Downloads/Manchester/**/*.xml')
 
 to_excel(workbook, 'bigrams',
          child_adult_two_col(top_20_by_speaker_session_split(bigrams, bins)))
 to_excel(workbook, 'trigrams',
          child_adult_two_col(top_20_by_speaker_session_split(trigrams, bins)))
-workbook.save('/tmp/two.xls')
+workbook.save('parent_child_ngrams.xls')
