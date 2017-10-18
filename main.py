@@ -89,13 +89,13 @@ def ngrams(words, n):
     return [words[i:i+n]
             for i in range(len(words) - n + 1)]
 
-def generate_chunks(utterances, gramsize):
+def generate_chunks(utterances, gramsize, attr='word'):
     """Returns a generator of ngram strings of size `gramsize`, from list of
     utterance, filtered by speaker.
 
     """
     for uid, speaker, tokens in utterances:
-        words = [x.word for x in tokens]
+        words = [getattr(x, attr) for x in tokens]
         if not utterance_filter(words):
             continue
         for ngram in ngrams(sanitize_words(words), gramsize):

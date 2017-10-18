@@ -9,7 +9,7 @@ import pandas as pd
 from main import generate_chunks
 from talkbank_parser import MorParser
 
-def read_ngrams_from_files(filenames, gramsize=2):
+def read_ngrams_from_files(filenames, gramsize=2, attr='word'):
     """Returns all a generator of all ngrams in files.
 
     args
@@ -21,10 +21,10 @@ def read_ngrams_from_files(filenames, gramsize=2):
     parser = MorParser()
     for xmlfn in filenames:
         print(xmlfn)
-        for uid, speaker, ngram in generate_chunks(parser.parse(xmlfn), gramsize):
+        for uid, speaker, ngram in generate_chunks(parser.parse(xmlfn), gramsize, attr):
             yield xmlfn, uid, speaker, ngram
 
-def read_data(filenames, gramsize):
+def read_data(filenames, gramsize, attr='word'):
     """Returns a DataFrame with a row for every ngram in the files.
 
     args
@@ -33,12 +33,12 @@ def read_data(filenames, gramsize):
     - n :: the size of the ngrams to create
 
     """
-    data = pd.DataFrame(read_ngrams_from_files(filenames, gramsize))
+    data = pd.DataFrame(read_ngrams_from_files(filenames, gramsize, attr))
     data.columns = 'filename uid speaker ngram'.split()
 
     return data
 
-def get_dataset(filenames, cached=True, gram_sizes=None):
+def get_dataset(filenames, cached=True, gram_sizes=None, attr='word'):
     """Read xml files specified in `filenames` and returns a dictionary with 3 data
     frames, one for each ngram size of 1, 2 and 3. If data has been loaded
     before, read from a sql DB instead of reparsing XML files.
@@ -49,6 +49,9 @@ def get_dataset(filenames, cached=True, gram_sizes=None):
 
     - filenames :: a list of strings, paths to xml files.
     - n :: the size of the ngrams to create
+    - attr :: the attribute to read from each word in the corpus. words are
+      represented as talkbank_parser.MorToken objects, so attr='word' will
+      result ngrams with content from some_mortoken['word'].
 
     Returns a dictionary with 'unigram', 'bigram' and 'trigram' keys, with
     DataFrames as values.
@@ -76,7 +79,7 @@ def get_dataset(filenames, cached=True, gram_sizes=None):
     else:
         for name, size in ngrams.items():
             print(name)
-            data[name] = read_data(filenames, size)
+            data[name] = read_data(filenames, size, attr)
             data[name].to_sql('{prefix}-{ngram}'.format(prefix=table_prefix, ngram=name),
                               conn,
                               if_exists='replace')
